@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SnakeType Pro - תמונות שטח ללא חפיפה</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; outline: none; }
+    body {
+      margin: 0; padding: 0;
+      background: radial-gradient(circle at center, #0f1923, #05080c);
+      color: #e0fbfc;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; overflow: hidden;
+    }
+    #game-container {
+      position: relative;
+      width: 1000px; height: 700px;
+      background-color: #080d13;
+      border: 2px solid #1f3548;
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(0, 255, 204, 0.2);
+      overflow: hidden;
+    }
+    canvas { display: block; width: 100%; height: 100%; background: #080d13; }
+    #top-hud {
+      position: absolute; top: 0; left: 0; width: 100%;
+      padding: 12px 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      background: linear-gradient(180deg, rgba(8,13,19,0.95) 0%, rgba(8,13,19,0) 100%);
+      pointer-events: none; z-index: 5;
+    }
+    .hud-stat { font-size: 17px; font-weight: 700; }
+    .val-score { color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,204,0.5); }
+    .val-wave { color: #ffcc00; }
+    .val-lives { color: #ff4757; letter-spacing: 2px; }
+    .val-emp { color: #00b4d8; }
+
+    #target-banner {
+      position: absolute; top: 50px; left: 50%;
+      transform: translateX(-50%);
+      display: none; flex-direction: column; align-items: center;
+      background: rgba(11, 20, 30, 0.94);
+      border: 1px solid #00ffcc; border-radius: 8px;
+      padding: 8px 24px;
+      box-shadow: 0 0 20px rgba(0,255,204,0.3);
+      z-index: 6; pointer-events: none;
+    }
+    #target-name { font-size: 24px; font-weight: 900; }
+    #target-next { font-size: 14px; color: #ffd166; margin-top: 2px; }
+
+    #key-feedback {
+      position: absolute; bottom: 15px; left: 20px;
+      font-size: 14px; color: #70a1ff; background: rgba(0,0,0,0.6);
+      padding: 4px 10px; border-radius: 6px; pointer-events: none; z-index: 5;
+    }
+
+    .overlay-screen {
+      position: absolute; inset: 0;
+      background: rgba(5, 8, 12, 0.92);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 10; padding: 30px; text-align: center;
+    }
+    h1 {
+      margin: 0 0 8px 0; font-size: 42px; color: #00ffcc;
+      text-shadow: 0 0 20px rgba(0,255,204,0.6);
+    }
+    p { margin: 6px 0; color: #a8dadc; font-size: 16px; max-width: 650px; line-height: 1.5; }
+    
+    .btn-row {
+      display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; justify-content: center;
+    }
+    button {
+      padding: 12px 26px; font-size: 16px; font-weight: 700;
+      color: #05080c; background: #00ffcc; border: none; border-radius: 6px;
+      cursor: pointer; box-shadow: 0 0 15px rgba(0,255,204,0.4);
+      transition: all 0.2s ease;
+    }
+    button:hover { background: #38ef7d; transform: scale(1.04); }
+    button.btn-sec {
+      background: #1f3548; color: #e0fbfc; border: 1px solid #3d607e; box-shadow: none;
+    }
+    button.btn-sec:hover { background: #2a4760; }
+
+    #status-msg { margin-top: 14px; font-size: 15px; color: #ffd166; font-weight: bold; }
+    
+    #audit-modal {
+      display: none; position: absolute; inset: 0;
+      background: rgba(8, 14, 20, 0.97); z-index: 25;
+      padding: 24px; flex-direction: column;
+    }
+    #audit-list {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 8px; overflow-y: auto; margin-top: 14px; padding-bottom: 20px;
+    }
+    .audit-item {
+      padding: 8px 12px; border-radius: 6px; background: #121c27;
+      display: flex; justify-content: space-between; align-items: center; font-size: 14px;
+    }
+    .audit-found { border: 1px solid #2ed573; color: #2ed573; }
+    .audit-missing { border: 1px solid #ff4757; color: #ff6b81; }
+
+    #hidden-focus-input {
+      position: absolute; opacity: 0; pointer-events: none; top: -100px; left: -100px;
+    }
+  </style>
+</head>
+<body tabindex="0">
+
+<input type="text" id="hidden-focus-input" autocomplete="off" />
+<input type="file" id="folder-input" webkitdirectory directory multiple style="display:none;" />
+
+<div id="game-container">
+  <div id="top-hud">
+    <div class="hud-stat">ניקוד: <span id="score" class="val-score">0</span></div>
+    <div class="hud-stat">גל: <span id="wave" class="val-wave">1</span></div>
+    <div class="hud-stat">פצצת EMP (Enter): <span id="emp-count" class="val-emp">1</span></div>
+    <div class="hud-stat">פסילות: <span id="lives" class="val-lives">♥♥♥</span></div>
+  </div>
+
+  <div id="target-banner">
+    <div id="target-name"></div>
+    <div id="target-next">הקלד את האות הבאה</div>
+  </div>
+
+  <div id="key-feedback">מקש שנקלט: -</div>
+
+  <canvas id="gameCanvas" width="1000" height="700"></canvas>
+
+  <div id="main-overlay" class="overlay-screen">
+    <h1>SnakeType Pro</h1>
+    <p>זיהוי 41 נחשי ישראל בצילומי שטח נקיים ללא הסתרות.<br>זיהית את הנחש בתמונה? הקלד את האות הראשונה של שמו בעברית כדי להינעל עליו ולירות לייזר.</p>
+    
+    <div id="status-msg">סורק תמונות...</div>
+    
+    <div class="btn-row">
+      <button id="start-btn" style="display:none;">התחל משחק</button>
+      <button id="select-folder-btn" class="btn-sec">📁 בחר את תיקיית התמונות ישירות</button>
+      <button id="inspect-btn" class="btn-sec">🔍 בדוק אילו תמונות נטענו</button>
+    </div>
+  </div>
+
+  <div id="audit-modal">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1f3548; padding-bottom:12px;">
+      <h2 style="margin:0; color:#00ffcc; font-size:22px;">דוח טעינת 41 המינים</h2>
+      <button id="close-audit-btn" style="padding:6px 16px; margin:0;">סגור</button>
+    </div>
+    <div id="audit-summary" style="margin-top:10px; font-weight:bold; color:#ffd166;"></div>
+    <div id="audit-list"></div>
+  </div>
+</div>
+
+<script>
+const SPECIES_LIST = [
+  // 9 ארסיים
+  { name: "צפע מצוי", type: "venomous" },
+  { name: "צפע החרמון", type: "venomous" },
+  { name: "אפעה מגוון", type: "venomous" },
+  { name: "שפיפון הנגב", type: "venomous" },
+  { name: "עכן חרטומים", type: "venomous" },
+  { name: "עכן גדול", type: "venomous" },
+  { name: "עכן קטן", type: "venomous" },
+  { name: "שרף עין גדי", type: "venomous" },
+  { name: "פתן שחור", type: "venomous" },
+
+  // 9 תת-ארסיים
+  { name: "תלום קשקשים מצוי", type: "mild" },
+  { name: "תלום קשקשים מדברי", type: "mild" },
+  { name: "ארבע קו מובהק", type: "mild" },
+  { name: "ארבע קו מצרי", type: "mild" },
+  { name: "עין חתול חברבר", type: "mild" },
+  { name: "עין חתול אפור", type: "mild" },
+  { name: "עין חתול אדמדם", type: "mild" },
+  { name: "נחש כיפה", type: "mild" },
+  { name: "מחרוזן הטבעות", type: "mild" },
+
+  // 23 לא ארסיים
+  { name: "זעמן שחור", type: "non" },
+  { name: "זעמן מטבעות", type: "non" },
+  { name: "זעמן זיתני", type: "non" },
+  { name: "זעמן יפהפה", type: "non" },
+  { name: "זעמן דק", type: "non" },
+  { name: "זעמן סיני", type: "non" },
+  { name: "זעמן אוכפים", type: "non" },
+  { name: "מטבעון מדבר", type: "non" },
+  { name: "כרכן חלק", type: "non" },
+  { name: "כרכן קרינים", type: "non" },
+  { name: "נחש מים משובץ", type: "non" },
+  { name: "חנק משריץ", type: "non" },
+  { name: "נחש חולות חרטומן", type: "non" },
+  { name: "שחור ראש מצוי", type: "non" },
+  { name: "שחור ראש דרומי", type: "non" },
+  { name: "שלוון טלוא ראש", type: "non" },
+  { name: "שלוון קווים", type: "non" },
+  { name: "שלוון קולר", type: "non" },
+  { name: "שלוון כתמים", type: "non" },
+  { name: "שלוון אזורים", type: "non" },
+  { name: "נחשיל מצוי", type: "non" },
+  { name: "נחשיל חד ראש", type: "non" },
+  { name: "נימון דק", type: "non" }
+];
+
+const COLOR_MAP = {
+  venomous: { border: "#ff3838", glow: "rgba(255, 56, 56, 0.6)" },
+  mild: { border: "#ff9f1a", glow: "rgba(255, 159, 26, 0.6)" },
+  non: { border: "#2ed573", glow: "rgba(46, 213, 115, 0.6)" }
+};
+
+let activeSnakePool = [];
+let shuffledDeck = [];
+let lastSpawnedName = null;
+
+// הגדרת 4 מסלולים קבועים ומרווחים כדי למנוע חפיפה
+const CARD_WIDTH = 210;
+const CARD_HEIGHT = 135;
+// חלוקה מדויקת של 4 מסלולים על קנבס ברוחב 1000px
+const LANES = [25, 270, 515, 760];
+
+function createShuffledDeck() {
+  const deck = [...activeSnakePool];
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  if (deck.length > 1 && deck[deck.length - 1].species.name === lastSpawnedName) {
+    [deck[deck.length - 1], deck[0]] = [deck[0], deck[deck.length - 1]];
+  }
+  return deck;
+}
+
+function normalizeName(str) {
+  return str.replace(/[-_.]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function preloadImages() {
+  const statusMsg = document.getElementById("status-msg");
+  const startBtn = document.getElementById("start-btn");
+  activeSnakePool = [];
+  let checked = 0;
+  const extensions = [".jpg", ".JPG", ".jpeg", ".JPEG", ".png", ".PNG"];
+
+  SPECIES_LIST.forEach(sp => {
+    tryLoadSpecies(sp, extensions, 0, (foundImg) => {
+      if (foundImg) {
+        activeSnakePool.push({ species: sp, imgElement: foundImg });
+      }
+      checked++;
+      if (checked === SPECIES_LIST.length) {
+        finishScan();
+      }
+    });
+  });
+
+  function finishScan() {
+    if (activeSnakePool.length > 0) {
+      statusMsg.innerHTML = `<span style="color:#00ffcc;">נמצאו ${activeSnakePool.length} מתוך ${SPECIES_LIST.length} תמונות בתיקיית images!</span>`;
+      startBtn.style.display = "inline-block";
+    } else {
+      statusMsg.innerHTML = `<span style="color:#ff6b81;">לא זוהו תמונות בתיקיית images/. השתמש בכפתור "בחר תיקייה" כדי לטעון אותן ישירות!</span>`;
+    }
+  }
+}
+
+function tryLoadSpecies(sp, exts, index, callback) {
+  if (index >= exts.length) {
+    callback(null);
+    return;
+  }
+  const img = new Image();
+  img.src = `images/${sp.name}${exts[index]}`;
+  img.onload = () => callback(img);
+  img.onerror = () => tryLoadSpecies(sp, exts, index + 1, callback);
+}
+
+const folderInput = document.getElementById("folder-input");
+document.getElementById("select-folder-btn").addEventListener("click", () => folderInput.click());
+
+folderInput.addEventListener("change", (e) => {
+  const files = Array.from(e.target.files).filter(f => f.type.startsWith("image/"));
+  if (files.length === 0) return;
+
+  activeSnakePool = [];
+  let filesProcessed = 0;
+
+  files.forEach(file => {
+    const rawName = file.name.substring(0, file.name.lastIndexOf("."));
+    const cleanFileName = normalizeName(rawName);
+
+    const match = SPECIES_LIST.find(sp => cleanFileName.includes(sp.name) || sp.name.includes(cleanFileName));
+
+    if (match && !activeSnakePool.some(item => item.species.name === match.name)) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.src = ev.target.result;
+        img.onload = () => {
+          activeSnakePool.push({ species: match, imgElement: img });
+          filesProcessed++;
+          if (filesProcessed === files.length) updateAfterFolderLoad();
+        };
+      };
+      reader.readAsDataURL(file);
+    } else {
+      filesProcessed++;
+      if (filesProcessed === files.length) updateAfterFolderLoad();
+    }
+  });
+
+  function updateAfterFolderLoad() {
+    const statusMsg = document.getElementById("status-msg");
+    const startBtn = document.getElementById("start-btn");
+    statusMsg.innerHTML = `<span style="color:#00ffcc;">נטענו בהצלחה ${activeSnakePool.length} מתוך ${SPECIES_LIST.length} מינים מהתיקייה שלך!</span>`;
+    startBtn.style.display = "inline-block";
+  }
+});
+
+document.getElementById("inspect-btn").addEventListener("click", () => {
+  const modal = document.getElementById("audit-modal");
+  const list = document.getElementById("audit-list");
+  const summary = document.getElementById("audit-summary");
+  list.innerHTML = "";
+
+  const loadedNames = new Set(activeSnakePool.map(a => a.species.name));
+  summary.textContent = `תמונות שנטענו בפועל: ${loadedNames.size} מתוך ${SPECIES_LIST.length} מינים.`;
+
+  SPECIES_LIST.forEach(sp => {
+    const isLoaded = loadedNames.has(sp.name);
+    const div = document.createElement("div");
+    div.className = `audit-item ${isLoaded ? 'audit-found' : 'audit-missing'}`;
+    div.innerHTML = `<span>${sp.name}</span> <span>${isLoaded ? '✅ נטען' : '❌ חסר'}</span>`;
+    list.appendChild(div);
+  });
+
+  modal.style.display = "flex";
+});
+
+document.getElementById("close-audit-btn").addEventListener("click", () => {
+  document.getElementById("audit-modal").style.display = "none";
+});
+
+// מנוע המשחק
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const keyFeedback = document.getElementById("key-feedback");
+const hiddenInput = document.getElementById("hidden-focus-input");
+
+let score = 0;
+let wave = 1;
+let lives = 3;
+let emps = 1;
+let isPlaying = false;
+let enemies = [];
+let lasers = [];
+let particles = [];
+let activeTarget = null;
+let lastTime = 0;
+let lastSpawn = 0;
+let spawnInterval = 3200;
+let enemiesLeftInWave = 7;
+
+const ship = { x: canvas.width / 2, y: canvas.height - 35 };
+
+class EnemyPhotoCard {
+  constructor(item, laneX, speed) {
+    this.name = item.species.name;
+    this.type = item.species.type;
+    this.img = item.imgElement;
+    this.width = CARD_WIDTH;
+    this.height = CARD_HEIGHT;
+    this.x = laneX;
+    this.y = -this.height - 5;
+    this.speed = speed;
+    this.typedIndex = 0;
+  }
+
+  update(delta) {
+    this.y += this.speed * delta;
+  }
+
+  draw() {
+    ctx.save();
+    const isLocked = this === activeTarget;
+    const colors = COLOR_MAP[this.type];
+
+    ctx.shadowBlur = isLocked ? 24 : 8;
+    ctx.shadowColor = isLocked ? "#00ffcc" : colors.glow;
+    ctx.strokeStyle = isLocked ? "#00ffcc" : colors.border;
+    ctx.lineWidth = isLocked ? 4 : 2;
+
+    ctx.fillStyle = "#0c1520";
+    ctx.beginPath();
+    ctx.roundRect(this.x, this.y, this.width, this.height, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    if (this.img && this.img.complete && this.img.naturalWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(this.x + 4, this.y + 4, this.width - 8, this.height - 8, 6);
+      ctx.clip();
+
+      const imgW = this.img.naturalWidth;
+      const imgH = this.img.naturalHeight;
+      const targetW = this.width - 8;
+      const targetH = this.height - 8;
+      const scale = Math.max(targetW / imgW, targetH / imgH);
+      const sw = targetW / scale;
+      const sh = targetH / scale;
+      const sx = (imgW - sw) / 2;
+      const sy = (imgH - sh) / 2;
+
+      ctx.drawImage(this.img, sx, sy, sw, sh, this.x + 4, this.y + 4, targetW, targetH);
+      ctx.restore();
+    }
+
+    if (isLocked) {
+      ctx.strokeStyle = "#00ffcc";
+      ctx.lineWidth = 2;
+      const cx = this.x + this.width / 2;
+      const cy = this.y + this.height / 2;
+      ctx.strokeRect(cx - 15, cy - 15, 30, 30);
+    }
+
+    ctx.restore();
+  }
+}
+
+class LaserBeam {
+  constructor(x1, y1, x2, y2) {
+    this.x1 = x1; this.y1 = y1;
+    this.x2 = x2; this.y2 = y2;
+    this.life = 1;
+  }
+  update(delta) {
+    this.life -= delta * 7;
+    return this.life <= 0;
+  }
+  draw() {
+    ctx.save();
+    ctx.strokeStyle = `rgba(0, 255, 204, ${this.life})`;
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 10; ctx.shadowColor = "#00ffcc";
+    ctx.beginPath(); ctx.moveTo(this.x1, this.y1); ctx.lineTo(this.x2, this.y2);
+    ctx.stroke(); ctx.restore();
+  }
+}
+
+class Particle {
+  constructor(x, y, color) {
+    this.x = x; this.y = y; this.color = color;
+    this.vx = (Math.random() - 0.5) * 260;
+    this.vy = (Math.random() - 0.5) * 260;
+    this.alpha = 1;
+  }
+  update(delta) {
+    this.x += this.vx * delta; this.y += this.vy * delta;
+    this.alpha -= delta * 1.6;
+    return this.alpha <= 0;
+  }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, this.alpha);
+    ctx.fillStyle = this.color;
+    ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+    ctx.fill(); ctx.restore();
+  }
+}
+
+// שיגור תמונה לתוך מסלול פנוי בלבד – ללא שום חפיפה
+function spawnEnemy() {
+  if (activeSnakePool.length === 0) return;
+
+  // 1. איתור מסלולים שפנויים בחלקם העליון (מרווח ביטחון אנכי של לפחות 180 פיקסלים)
+  const MIN_VERTICAL_GAP = 180;
+  const availableLanes = LANES.filter(laneX => {
+    // בודקים אם יש כבר תמונה במסלול הזה שעדיין נמצאת קרוב לראש המסך
+    const hasNearby = enemies.some(e => Math.abs(e.x - laneX) < 10 && e.y < MIN_VERTICAL_GAP);
+    return !hasNearby;
+  });
+
+  // אם כל 4 המסלולים עמוסים כרגע בראש המסך – נמתין מעט
+  if (availableLanes.length === 0) return;
+
+  // בחירת מסלול פנוי באקראי
+  const chosenLaneX = availableLanes[Math.floor(Math.random() * availableLanes.length)];
+
+  // 2. שליפת נחש מהחפיסה (שאינו קיים כבר על המסך)
+  const onScreenNames = new Set(enemies.map(e => e.name));
+  let chosenItem = null;
+  let attempts = 0;
+
+  while (!chosenItem && attempts < activeSnakePool.length * 2) {
+    attempts++;
+    if (shuffledDeck.length === 0) {
+      shuffledDeck = createShuffledDeck();
+    }
+    const candidate = shuffledDeck.pop();
+    if (activeSnakePool.length <= 3 || !onScreenNames.has(candidate.species.name)) {
+      chosenItem = candidate;
+    } else {
+      shuffledDeck.unshift(candidate);
+    }
+  }
+
+  if (!chosenItem) {
+    chosenItem = activeSnakePool[Math.floor(Math.random() * activeSnakePool.length)];
+  }
+
+  lastSpawnedName = chosenItem.species.name;
+  
+  // מהירות מתואמת ואחידה כדי שתמונות לא יעקפו וידרסו זו את זו
+  const uniformSpeed = 16 + wave * 2.8;
+  enemies.push(new EnemyPhotoCard(chosenItem, chosenLaneX, uniformSpeed));
+}
+
+function triggerEMP() {
+  if (emps <= 0 || enemies.length === 0) return;
+  emps--;
+  enemies.forEach(e => {
+    for (let i = 0; i < 25; i++) {
+      particles.push(new Particle(e.x + e.width / 2, e.y + e.height / 2, "#00ffcc"));
+    }
+  });
+  score += enemies.length * 50;
+  enemies = [];
+  activeTarget = null;
+  updateHUD();
+}
+
+function updateHUD() {
+  document.getElementById("score").textContent = score;
+  document.getElementById("wave").textContent = wave;
+  document.getElementById("lives").textContent = "♥".repeat(Math.max(0, lives));
+  document.getElementById("emp-count").textContent = emps;
+
+  const banner = document.getElementById("target-banner");
+  if (activeTarget) {
+    banner.style.display = "flex";
+    const name = activeTarget.name;
+    const typed = name.substring(0, activeTarget.typedIndex);
+    const next = name[activeTarget.typedIndex] || "";
+    const rest = name.substring(activeTarget.typedIndex + 1);
+
+    document.getElementById("target-name").innerHTML = 
+      `<span style="color:#00ffcc;">${typed}</span>` +
+      `<span style="color:#ffd166; text-decoration:underline;">${next === " " ? "␣" : next}</span>` +
+      `<span style="color:#ffffff;">${rest}</span>`;
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+function handleKeyPress(rawKey) {
+  if (!isPlaying) return;
+
+  if (rawKey === "Enter") {
+    triggerEMP();
+    return;
+  }
+
+  let key = rawKey;
+  if (key === " " || key === "Spacebar") {
+    key = " ";
+  }
+
+  keyFeedback.textContent = `מקש שנקלט: "${key === " " ? "רווח" : key}"`;
+
+  const normalize = (ch) => {
+    const map = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' };
+    return map[ch] || ch;
+  };
+
+  if (activeTarget) {
+    const expected = activeTarget.name[activeTarget.typedIndex];
+    if (key === expected || (key === " " && expected === " ") || (key !== " " && normalize(key) === normalize(expected))) {
+      const targetCenterX = activeTarget.x + activeTarget.width / 2;
+      const targetCenterY = activeTarget.y + activeTarget.height / 2;
+      lasers.push(new LaserBeam(ship.x, ship.y, targetCenterX, targetCenterY));
+
+      activeTarget.typedIndex++;
+
+      while (
+        activeTarget.typedIndex < activeTarget.name.length &&
+        activeTarget.name[activeTarget.typedIndex] === " " &&
+        key !== " "
+      ) {
+        activeTarget.typedIndex++;
+      }
+
+      if (activeTarget.typedIndex >= activeTarget.name.length) {
+        for (let i = 0; i < 30; i++) {
+          particles.push(new Particle(targetCenterX, targetCenterY, COLOR_MAP[activeTarget.type].border));
+        }
+        score += activeTarget.name.length * 20;
+        enemies = enemies.filter(item => item !== activeTarget);
+        activeTarget = null;
+      }
+      updateHUD();
+    }
+    return;
+  }
+
+  const matches = enemies.filter(enemy => {
+    const firstChar = enemy.name[0];
+    return key === firstChar || normalize(key) === normalize(firstChar);
+  });
+
+  if (matches.length > 0) {
+    matches.sort((a, b) => (b.y + b.height) - (a.y + a.height));
+    activeTarget = matches[0];
+    activeTarget.typedIndex = 1;
+
+    const targetCenterX = activeTarget.x + activeTarget.width / 2;
+    const targetCenterY = activeTarget.y + activeTarget.height / 2;
+    lasers.push(new LaserBeam(ship.x, ship.y, targetCenterX, targetCenterY));
+
+    if (activeTarget.typedIndex >= activeTarget.name.length) {
+      for (let i = 0; i < 30; i++) {
+        particles.push(new Particle(targetCenterX, targetCenterY, COLOR_MAP[activeTarget.type].border));
+      }
+      score += activeTarget.name.length * 20;
+      enemies = enemies.filter(item => item !== activeTarget);
+      activeTarget = null;
+    }
+    updateHUD();
+  }
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === " " || e.code === "Space") {
+    e.preventDefault();
+  }
+  handleKeyPress(e.key);
+}, true);
+
+document.addEventListener("click", () => {
+  if (isPlaying) {
+    hiddenInput.focus();
+  }
+});
+
+function startGame() {
+  if (activeSnakePool.length === 0) {
+    alert("אין תמונות זמינות לשחק איתן!");
+    return;
+  }
+  score = 0; wave = 1; lives = 3; emps = 1;
+  enemies = []; lasers = []; particles = [];
+  activeTarget = null; enemiesLeftInWave = 7; spawnInterval = 3200;
+  
+  shuffledDeck = createShuffledDeck();
+  lastSpawnedName = null;
+
+  isPlaying = true;
+  lastTime = performance.now();
+  lastSpawn = performance.now();
+  
+  document.getElementById("main-overlay").style.display = "none";
+  hiddenInput.focus();
+  window.focus();
+
+  updateHUD();
+  requestAnimationFrame(gameLoop);
+}
+
+function gameOver() {
+  isPlaying = false;
+  const overlay = document.getElementById("main-overlay");
+  overlay.querySelector("h1").textContent = "המשחק הסתיים!";
+  overlay.querySelector("h1").style.color = "#ff4757";
+  document.getElementById("start-btn").textContent = "שחק שוב";
+  overlay.style.display = "flex";
+}
+
+function gameLoop(time) {
+  if (!isPlaying) return;
+  const delta = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
+
+  if (enemiesLeftInWave > 0 && time - lastSpawn > spawnInterval) {
+    spawnEnemy();
+    enemiesLeftInWave--;
+    lastSpawn = time;
+  } else if (enemiesLeftInWave === 0 && enemies.length === 0) {
+    wave++; emps++;
+    enemiesLeftInWave = 7 + wave * 2;
+    spawnInterval = Math.max(1600, 3200 - wave * 180);
+    updateHUD();
+  }
+
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const enemy = enemies[i];
+    enemy.update(delta);
+
+    if (enemy.y > canvas.height - 40) {
+      lives--;
+      for (let p = 0; p < 20; p++) {
+        particles.push(new Particle(enemy.x + enemy.width / 2, canvas.height - 20, "#ff4757"));
+      }
+      if (activeTarget === enemy) activeTarget = null;
+      enemies.splice(i, 1);
+      updateHUD();
+
+      if (lives <= 0) {
+        gameOver();
+        return;
+      }
+    }
+  }
+
+  lasers = lasers.filter(l => !l.update(delta));
+  particles = particles.filter(p => !p.update(delta));
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(ship.x, ship.y + 15, 22, Math.PI, 0);
+  ctx.fillStyle = "#00ffcc";
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = "#00ffcc";
+  ctx.fill();
+  ctx.restore();
+
+  enemies.forEach(e => e.draw());
+  lasers.forEach(l => l.draw());
+  particles.forEach(p => p.draw());
+
+  requestAnimationFrame(gameLoop);
+}
+
+document.getElementById("start-btn").addEventListener("click", startGame);
+
+preloadImages();
+</script>
+</body>
+</html>
